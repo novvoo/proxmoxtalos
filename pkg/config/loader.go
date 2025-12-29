@@ -31,5 +31,16 @@ func (c *ClusterConfig) Validate() error {
 	if len(c.Nodes.ControlPlanes) < 1 {
 		return fmt.Errorf("至少需要 1 个控制平面节点")
 	}
+
+	// 验证 Proxmox 认证配置
+	if c.Proxmox.Password == "" && (c.Proxmox.APITokenID == "" || c.Proxmox.APIToken == "") {
+		return fmt.Errorf("必须配置 Proxmox 认证信息：password 或 (api_token_id + api_token)")
+	}
+
+	// 如果同时配置了密码和 API Token，优先使用 API Token
+	if c.Proxmox.Password != "" && c.Proxmox.APITokenID != "" {
+		fmt.Println("⚠️  同时配置了密码和 API Token，将优先使用 API Token")
+	}
+
 	return nil
 }

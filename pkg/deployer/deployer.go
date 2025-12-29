@@ -15,6 +15,40 @@ type Deployer struct {
 	config *config.ClusterConfig
 }
 
+// getProxmoxEnv 返回配置了 Proxmox 认证的环境变量
+func (d *Deployer) getProxmoxEnv() []string {
+	env := os.Environ()
+
+	// 优先使用 API Token
+	if d.config.Proxmox.APITokenID != "" && d.config.Proxmox.APIToken != "" {
+		env = append(env, fmt.Sprintf("PROXMOX_TOKEN_ID=%s", d.config.Proxmox.APITokenID))
+		env = append(env, fmt.Sprintf("PROXMOX_TOKEN_SECRET=%s", d.config.Proxmox.APIToken))
+	} else if d.config.Proxmox.Password != "" {
+		// 使用密码认证
+		env = append(env, fmt.Sprintf("PROXMOX_PASSWORD=%s", d.config.Proxmox.Password))
+	}
+
+	// Proxmox 主机和用户
+	env = append(env, fmt.Sprintf("PROXMOX_HOST=%s", d.config.Proxmox.Host))
+	env = append(env, fmt.Sprintf("PROXMOX_USER=%s", d.config.Proxmox.User))
+
+	// TLS 验证
+	if d.config.Proxmox.SkipTLSVerify {
+		env = append(env, "PROXMOX_SKIP_TLS_VERIFY=1")
+	}
+
+	return env
+}
+
+// execProxmoxCommand 执行带认证的 Proxmox 命令
+func (d *Deployer) execProxmoxCommand(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Env = d.getProxmoxEnv()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func New(cfg *config.ClusterConfig) *Deployer {
 	return &Deployer{config: cfg}
 }
@@ -120,6 +154,7 @@ func (d *Deployer) CreateTemplate() error {
 
 	// 检查模板是否存在
 	cmd := exec.Command("qm", "status", fmt.Sprintf("%d", vmID))
+	cmd.Env = d.getProxmoxEnv()
 	if cmd.Run() == nil {
 		fmt.Printf("✓ 模板已存在 (VM ID: %d)\n", vmID)
 		return nil
@@ -139,40 +174,35 @@ func (d *Deployer) CreateTemplate() error {
 		"--efidisk0", fmt.Sprintf("%s:4,format=qcow2", d.config.Proxmox.StoragePool),
 		"--agent", "enabled=1",
 	}
-	cmd = exec.Command("qm", args...)
-	if err := cmd.Run(); err != nil {
+	if err := d.execProxmoxCommand("qm", args...); err != nil {
 		return fmt.Errorf("创建虚拟机失败: %w", err)
 	}
 
 	// 导入磁盘
 	imageFile := fmt.Sprintf("talos-%s.qcow2", d.config.TalosVersion)
-	cmd = exec.Command("qm", "importdisk",
+	if err := d.execProxmoxCommand("qm", "importdisk",
 		fmt.Sprintf("%d", vmID),
 		imageFile,
 		d.config.Proxmox.StoragePool,
 		"--format", "qcow2",
-	)
-	if err := cmd.Run(); err != nil {
+	); err != nil {
 		return fmt.Errorf("导入磁盘失败: %w", err)
 	}
 
 	// 附加磁盘
 	diskSpec := fmt.Sprintf("%s:vm-%d-disk-0,discard=on,cache=writeback,iothread=1,ssd=1",
 		d.config.Proxmox.StoragePool, vmID)
-	cmd = exec.Command("qm", "set", fmt.Sprintf("%d", vmID), "--scsi0", diskSpec)
-	if err := cmd.Run(); err != nil {
+	if err := d.execProxmoxCommand("qm", "set", fmt.Sprintf("%d", vmID), "--scsi0", diskSpec); err != nil {
 		return fmt.Errorf("附加磁盘失败: %w", err)
 	}
 
 	// 设置启动顺序
-	cmd = exec.Command("qm", "set", fmt.Sprintf("%d", vmID), "--boot", "order=scsi0")
-	if err := cmd.Run(); err != nil {
+	if err := d.execProxmoxCommand("qm", "set", fmt.Sprintf("%d", vmID), "--boot", "order=scsi0"); err != nil {
 		return fmt.Errorf("设置启动顺序失败: %w", err)
 	}
 
 	// 转换为模板
-	cmd = exec.Command("qm", "template", fmt.Sprintf("%d", vmID))
-	if err := cmd.Run(); err != nil {
+	if err := d.execProxmoxCommand("qm", "template", fmt.Sprintf("%d", vmID)); err != nil {
 		return fmt.Errorf("转换模板失败: %w", err)
 	}
 
@@ -199,13 +229,12 @@ func (d *Deployer) createNode(node config.NodeSpec) error {
 	fmt.Printf("  创建节点: %s (VM ID: %d)\n", node.Name, node.VMID)
 
 	// 克隆模板
-	cmd := exec.Command("qm", "clone",
+	if err := d.execProxmoxCommand("qm", "clone",
 		fmt.Sprintf("%d", d.config.Proxmox.TemplateVMID),
 		fmt.Sprintf("%d", node.VMID),
 		"--name", node.Name,
 		"--full", "1",
-	)
-	if err := cmd.Run(); err != nil {
+	); err != nil {
 		return fmt.Errorf("克隆失败: %w", err)
 	}
 
@@ -213,18 +242,16 @@ func (d *Deployer) createNode(node config.NodeSpec) error {
 	diskSpec := fmt.Sprintf("%s:vm-%d-disk-0,discard=on,cache=writeback,iothread=1,ssd=1,size=%s",
 		d.config.Proxmox.StoragePool, node.VMID, node.Disk)
 
-	cmd = exec.Command("qm", "set", fmt.Sprintf("%d", node.VMID),
+	if err := d.execProxmoxCommand("qm", "set", fmt.Sprintf("%d", node.VMID),
 		"--cores", fmt.Sprintf("%d", node.CPU),
 		"--memory", fmt.Sprintf("%d", node.Memory),
 		"--scsi0", diskSpec,
-	)
-	if err := cmd.Run(); err != nil {
+	); err != nil {
 		return fmt.Errorf("配置资源失败: %w", err)
 	}
 
 	// 启动节点
-	cmd = exec.Command("qm", "start", fmt.Sprintf("%d", node.VMID))
-	if err := cmd.Run(); err != nil {
+	if err := d.execProxmoxCommand("qm", "start", fmt.Sprintf("%d", node.VMID)); err != nil {
 		return fmt.Errorf("启动节点失败: %w", err)
 	}
 
@@ -466,8 +493,7 @@ func (d *Deployer) StartNodes() error {
 
 	for _, node := range allNodes {
 		fmt.Printf("  启动节点: %s (VM ID: %d)\n", node.Name, node.VMID)
-		cmd := exec.Command("qm", "start", fmt.Sprintf("%d", node.VMID))
-		if err := cmd.Run(); err != nil {
+		if err := d.execProxmoxCommand("qm", "start", fmt.Sprintf("%d", node.VMID)); err != nil {
 			fmt.Printf("  ⚠️  节点 %s 可能已在运行\n", node.Name)
 		}
 	}
@@ -481,8 +507,7 @@ func (d *Deployer) StopNodes() error {
 
 	for _, node := range allNodes {
 		fmt.Printf("  停止节点: %s (VM ID: %d)\n", node.Name, node.VMID)
-		cmd := exec.Command("qm", "stop", fmt.Sprintf("%d", node.VMID))
-		if err := cmd.Run(); err != nil {
+		if err := d.execProxmoxCommand("qm", "stop", fmt.Sprintf("%d", node.VMID)); err != nil {
 			fmt.Printf("  ⚠️  停止节点 %s 失败\n", node.Name)
 		}
 	}
@@ -498,11 +523,12 @@ func (d *Deployer) Destroy() error {
 	for _, node := range allNodes {
 		fmt.Printf("  销毁节点: %s (VM ID: %d)\n", node.Name, node.VMID)
 
-		exec.Command("qm", "stop", fmt.Sprintf("%d", node.VMID)).Run()
+		cmd := exec.Command("qm", "stop", fmt.Sprintf("%d", node.VMID))
+		cmd.Env = d.getProxmoxEnv()
+		cmd.Run()
 		time.Sleep(1 * time.Second)
 
-		cmd := exec.Command("qm", "destroy", fmt.Sprintf("%d", node.VMID), "--purge")
-		if err := cmd.Run(); err != nil {
+		if err := d.execProxmoxCommand("qm", "destroy", fmt.Sprintf("%d", node.VMID), "--purge"); err != nil {
 			fmt.Printf("  ⚠️  删除节点 %s 失败\n", node.Name)
 		}
 	}
@@ -510,7 +536,9 @@ func (d *Deployer) Destroy() error {
 	// 删除模板
 	vmID := d.config.Proxmox.TemplateVMID
 	fmt.Printf("  删除模板 (VM ID: %d)\n", vmID)
-	exec.Command("qm", "destroy", fmt.Sprintf("%d", vmID), "--purge").Run()
+	cmd := exec.Command("qm", "destroy", fmt.Sprintf("%d", vmID), "--purge")
+	cmd.Env = d.getProxmoxEnv()
+	cmd.Run()
 
 	// 清理配置文件
 	configDir := fmt.Sprintf("./%s-config", d.config.ClusterName)

@@ -19,10 +19,14 @@ type NetworkConfig struct {
 }
 
 type ProxmoxConfig struct {
-	Host         string `yaml:"host"`
-	User         string `yaml:"user"`
-	StoragePool  string `yaml:"storage_pool"`
-	TemplateVMID int    `yaml:"template_vm_id"`
+	Host          string `yaml:"host"`
+	User          string `yaml:"user"`
+	Password      string `yaml:"password,omitempty"`     // 密码认证（不推荐）
+	APITokenID    string `yaml:"api_token_id,omitempty"` // API Token ID（推荐）
+	APIToken      string `yaml:"api_token,omitempty"`    // API Token Secret（推荐）
+	StoragePool   string `yaml:"storage_pool"`
+	TemplateVMID  int    `yaml:"template_vm_id"`
+	SkipTLSVerify bool   `yaml:"skip_tls_verify,omitempty"` // 跳过 TLS 验证（开发环境）
 }
 
 type NodesConfig struct {

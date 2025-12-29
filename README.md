@@ -164,6 +164,10 @@ chmod +x talos-deployer
 
 ## 配置文件示例
 
+完整的配置文件示例请参考 [example-config.yaml](example-config.yaml)。
+
+### 基础配置
+
 ```yaml
 cluster_name: my-talos-cluster
 talos_version: v1.6.0
@@ -178,8 +182,13 @@ network:
 proxmox:
   host: pve
   user: root@pam
+  # 认证配置（必需）- 详见认证配置文档
+  api_token_id: "root@pam!deployer"  # 推荐使用 API Token
+  api_token: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  # password: "your-password"  # 或使用密码（不推荐）
   storage_pool: local-lvm
   template_vm_id: 9000
+  skip_tls_verify: false  # 生产环境设为 false
 
 nodes:
   control_planes:
@@ -316,6 +325,11 @@ kubectl get pods -A
 
 ## 故障排除
 
+### 认证失败
+- 检查 Proxmox 认证配置是否正确
+- 确认 API Token 或密码有效
+- 查看详细说明：[认证配置文档](docs/authentication.md)
+
 ### 镜像下载失败
 - 确保网络连接正常
 - 如果在中国，建议配置代理或使用镜像站
@@ -339,3 +353,10 @@ kubectl get pods -A
 ## 许可证
 
 MIT License
+
+## 相关文档
+
+- [快速开始指南](docs/quick-start.md) - 新手入门教程
+- [认证配置文档](docs/authentication.md) - Proxmox 认证配置详解
+- [镜像源配置](docs/registry-mirrors.md) - 容器镜像加速配置
+- [架构说明](docs/architecture.md) - 系统架构和设计
