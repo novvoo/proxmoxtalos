@@ -2,9 +2,6 @@
 talos-deployer
 talos-deployer.exe
 
-# Config files
-cluster-config.yaml
-*-config.yaml  # 包含认证信息的配置文件
 *-config/
 
 # Talos images
