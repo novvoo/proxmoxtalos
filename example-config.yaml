@@ -1,0 +1,92 @@
+# Talos Proxmox 集群配置示例 - 针对中国网络环境优化
+cluster_name: my-talos-cluster
+talos_version: v1.6.0
+kubernetes_version: "1.29"
+
+network:
+  bridge: vmbr0
+  # 使用国内 DNS 服务器
+  dns_server: 223.5.5.5  # 阿里云 DNS
+  gateway: 192.168.1.1
+  netmask: "24"
+
+proxmox:
+  host: pve
+  user: root@pam
+  storage_pool: local-lvm
+  template_vm_id: 9000
+
+nodes:
+  control_planes:
+    - vm_id: 101
+      ip_address: 192.168.1.101
+      name: talos-cp-1
+      cpu: 2
+      memory: 2048
+      disk: 20G
+      role: controlplane
+    - vm_id: 102
+      ip_address: 192.168.1.102
+      name: talos-cp-2
+      cpu: 2
+      memory: 2048
+      disk: 20G
+      role: controlplane
+    - vm_id: 103
+      ip_address: 192.168.1.103
+      name: talos-cp-3
+      cpu: 2
+      memory: 2048
+      disk: 20G
+      role: controlplane
+
+  workers:
+    - vm_id: 201
+      ip_address: 192.168.1.201
+      name: talos-worker-1
+      cpu: 4
+      memory: 4096
+      disk: 50G
+      role: worker
+    - vm_id: 202
+      ip_address: 192.168.1.202
+      name: talos-worker-2
+      cpu: 4
+      memory: 4096
+      disk: 50G
+      role: worker
+
+# 代理配置 - 针对中国网络环境
+proxy:
+  enabled: true
+  # 如果你有 HTTP 代理，请配置以下地址
+  http_proxy: "http://192.168.1.100:7890"
+  https_proxy: "http://192.168.1.100:7890"
+  # 本地网络不使用代理
+  no_proxy: "localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+  # 使用 GitHub 镜像站加速 Talos 镜像下载
+  mirror_url: "https://mirror.ghproxy.com/https://github.com/siderolabs/talos/releases/download"
+
+# 容器镜像仓库配置 - 使用国内镜像源加速
+registry:
+  mirrors:
+    # Docker Hub 镜像
+    docker.io:
+      endpoints:
+        - "https://docker.mirrors.ustc.edu.cn"
+        - "https://hub-mirror.c.163.com"
+    # Google 容器镜像
+    k8s.gcr.io:
+      endpoints:
+        - "https://registry.aliyuncs.com/google_containers"
+    gcr.io:
+      endpoints:
+        - "https://gcr.mirrors.ustc.edu.cn"
+    # GitHub 容器镜像
+    ghcr.io:
+      endpoints:
+        - "https://ghcr.nju.edu.cn"
+    # Quay 镜像
+    quay.io:
+      endpoints:
+        - "https://quay.mirrors.ustc.edu.cn"
