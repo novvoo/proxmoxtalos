@@ -1,7 +1,7 @@
 # Binaries
 talos-deployer
 talos-deployer.exe
-
+docs/
 *-config/
 
 # Talos images
