@@ -51,6 +51,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// 容器镜像源配置
+	if err := promptRegistryConfig(cfg); err != nil {
+		return err
+	}
+
 	// 保存配置
 	return saveConfig(cfg)
 }
@@ -165,6 +170,55 @@ func promptProxmoxConfig(cfg *config.ClusterConfig) error {
 	}
 	cfg.Proxmox.User = user
 
+	// 认证方式选择
+	fmt.Println()
+	fmt.Println("💡 认证方式说明:")
+	fmt.Println("   - password: 使用密码认证（简单，但不推荐用于生产环境）")
+	fmt.Println("   - api_token: 使用 API Token 认证（推荐，更安全）")
+	fmt.Println("   创建 API Token: Datacenter -> Permissions -> API Tokens -> Add")
+	fmt.Println()
+
+	selectPrompt := promptui.Select{
+		Label: "选择认证方式",
+		Items: []string{"password", "api_token"},
+	}
+	_, authMethod, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+	cfg.Proxmox.AuthMethod = authMethod
+
+	if authMethod == "password" {
+		prompt = promptui.Prompt{
+			Label: "Proxmox 密码",
+			Mask:  '*',
+		}
+		password, err := prompt.Run()
+		if err != nil {
+			return err
+		}
+		cfg.Proxmox.Password = password
+	} else {
+		prompt = promptui.Prompt{
+			Label:   "API Token ID",
+			Default: "root@pam!deployer",
+		}
+		tokenID, err := prompt.Run()
+		if err != nil {
+			return err
+		}
+		cfg.Proxmox.APITokenID = tokenID
+
+		prompt = promptui.Prompt{
+			Label: "API Token Secret",
+		}
+		token, err := prompt.Run()
+		if err != nil {
+			return err
+		}
+		cfg.Proxmox.APIToken = token
+	}
+
 	prompt = promptui.Prompt{
 		Label:   "存储池",
 		Default: "local-lvm",
@@ -185,6 +239,18 @@ func promptProxmoxConfig(cfg *config.ClusterConfig) error {
 	}
 	id, _ := strconv.Atoi(templateID)
 	cfg.Proxmox.TemplateVMID = id
+
+	// TLS 验证选项
+	fmt.Println()
+	selectPrompt = promptui.Select{
+		Label: "跳过 TLS 证书验证（仅开发环境）",
+		Items: []string{"否（推荐）", "是"},
+	}
+	_, tlsResult, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+	cfg.Proxmox.SkipTLSVerify = (tlsResult == "是")
 
 	fmt.Println()
 	return nil
@@ -366,6 +432,122 @@ func promptProxyConfig(cfg *config.ClusterConfig) error {
 	}
 	if mirrorURL != "" {
 		cfg.Proxy.MirrorURL = mirrorURL
+	}
+
+	fmt.Println()
+	return nil
+}
+
+func promptRegistryConfig(cfg *config.ClusterConfig) error {
+	fmt.Println("🐳 容器镜像源配置（可选）")
+	fmt.Println("------------------------")
+	fmt.Println("配置国内镜像源可以大幅加速容器镜像拉取")
+	fmt.Println()
+
+	selectPrompt := promptui.Select{
+		Label: "是否配置容器镜像源",
+		Items: []string{"否", "是（推荐国内用户）"},
+	}
+	_, result, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	if result == "否" {
+		fmt.Println()
+		return nil
+	}
+
+	// 初始化 Registry 配置
+	cfg.Registry = &config.RegistryConfig{
+		Mirrors: make(map[string]config.RegistryMirror),
+	}
+
+	// Docker Hub 镜像
+	fmt.Println()
+	fmt.Println("Docker Hub 镜像源（常用镜像源）:")
+	fmt.Println("  1. docker.mirrors.ustc.edu.cn (中科大)")
+	fmt.Println("  2. hub-mirror.c.163.com (网易)")
+	fmt.Println()
+
+	selectPrompt = promptui.Select{
+		Label: "配置 Docker Hub 镜像源",
+		Items: []string{"是", "否"},
+	}
+	_, dockerResult, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	if dockerResult == "是" {
+		cfg.Registry.Mirrors["docker.io"] = config.RegistryMirror{
+			Endpoints: []string{
+				"https://docker.mirrors.ustc.edu.cn",
+				"https://hub-mirror.c.163.com",
+			},
+		}
+	}
+
+	// Google 容器镜像
+	fmt.Println()
+	selectPrompt = promptui.Select{
+		Label: "配置 Google 容器镜像源（k8s.gcr.io, gcr.io）",
+		Items: []string{"是（推荐）", "否"},
+	}
+	_, gcrResult, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	if gcrResult == "是（推荐）" {
+		cfg.Registry.Mirrors["k8s.gcr.io"] = config.RegistryMirror{
+			Endpoints: []string{
+				"https://registry.aliyuncs.com/google_containers",
+			},
+		}
+		cfg.Registry.Mirrors["gcr.io"] = config.RegistryMirror{
+			Endpoints: []string{
+				"https://gcr.mirrors.ustc.edu.cn",
+			},
+		}
+	}
+
+	// GitHub 容器镜像
+	fmt.Println()
+	selectPrompt = promptui.Select{
+		Label: "配置 GitHub 容器镜像源（ghcr.io）",
+		Items: []string{"是", "否"},
+	}
+	_, ghcrResult, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	if ghcrResult == "是" {
+		cfg.Registry.Mirrors["ghcr.io"] = config.RegistryMirror{
+			Endpoints: []string{
+				"https://ghcr.nju.edu.cn",
+			},
+		}
+	}
+
+	// Quay 镜像
+	fmt.Println()
+	selectPrompt = promptui.Select{
+		Label: "配置 Quay 镜像源（quay.io）",
+		Items: []string{"是", "否"},
+	}
+	_, quayResult, err := selectPrompt.Run()
+	if err != nil {
+		return err
+	}
+
+	if quayResult == "是" {
+		cfg.Registry.Mirrors["quay.io"] = config.RegistryMirror{
+			Endpoints: []string{
+				"https://quay.mirrors.ustc.edu.cn",
+			},
+		}
 	}
 
 	fmt.Println()

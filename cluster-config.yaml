@@ -13,13 +13,19 @@ network:
 proxmox:
   host: pve
   user: root@pam
-  # 认证方式 1: 使用密码（不推荐，仅用于测试）
+  
+  # 认证方式选择: "password" 或 "api_token"
+  # - password: 使用密码认证（不推荐，仅用于测试）
+  # - api_token: 使用 API Token 认证（推荐，更安全）
+  auth_method: password
+  
+  # 密码认证配置（当 auth_method=password 时使用）
   password: "your-password-here"
   
-  # 认证方式 2: 使用 API Token（推荐，更安全）
+  # API Token 认证配置（当 auth_method=api_token 时使用）
   # 创建方法: Datacenter -> Permissions -> API Tokens -> Add
-  # api_token_id: "root@pam!deployer"
-  # api_token: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  api_token_id: ""  # 例如: "root@pam!deployer"
+  api_token: ""     # 例如: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   
   storage_pool: local-lvm
   template_vm_id: 9000

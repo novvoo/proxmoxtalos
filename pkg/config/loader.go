@@ -33,13 +33,23 @@ func (c *ClusterConfig) Validate() error {
 	}
 
 	// 验证 Proxmox 认证配置
-	if c.Proxmox.Password == "" && (c.Proxmox.APITokenID == "" || c.Proxmox.APIToken == "") {
-		return fmt.Errorf("必须配置 Proxmox 认证信息：password 或 (api_token_id + api_token)")
-	}
-
-	// 如果同时配置了密码和 API Token，优先使用 API Token
-	if c.Proxmox.Password != "" && c.Proxmox.APITokenID != "" {
-		fmt.Println("⚠️  同时配置了密码和 API Token，将优先使用 API Token")
+	switch c.Proxmox.AuthMethod {
+	case "password":
+		if c.Proxmox.Password == "" {
+			return fmt.Errorf("auth_method 设置为 password，但未配置 password 字段")
+		}
+	case "api_token":
+		if c.Proxmox.APITokenID == "" || c.Proxmox.APIToken == "" {
+			return fmt.Errorf("auth_method 设置为 api_token，但未配置 api_token_id 或 api_token 字段")
+		}
+	case "":
+		// 兼容旧配置：如果没有指定 auth_method，检查是否至少配置了一种认证方式
+		if c.Proxmox.Password == "" && (c.Proxmox.APITokenID == "" || c.Proxmox.APIToken == "") {
+			return fmt.Errorf("必须配置 Proxmox 认证信息：设置 auth_method 并配置相应的认证凭据")
+		}
+		fmt.Println("⚠️  警告: 未指定 auth_method，建议明确设置为 'password' 或 'api_token'")
+	default:
+		return fmt.Errorf("无效的 auth_method: %s，必须是 'password' 或 'api_token'", c.Proxmox.AuthMethod)
 	}
 
 	return nil

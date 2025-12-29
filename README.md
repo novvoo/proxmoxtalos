@@ -182,10 +182,17 @@ network:
 proxmox:
   host: pve
   user: root@pam
-  # 认证配置（必需）- 详见认证配置文档
-  api_token_id: "root@pam!deployer"  # 推荐使用 API Token
+  
+  # 认证方式选择: "password" 或 "api_token"
+  auth_method: api_token  # 推荐使用 api_token
+  
+  # API Token 认证配置（当 auth_method=api_token 时使用）
+  api_token_id: "root@pam!deployer"
   api_token: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  # password: "your-password"  # 或使用密码（不推荐）
+  
+  # 密码认证配置（当 auth_method=password 时使用）
+  # password: "your-password"
+  
   storage_pool: local-lvm
   template_vm_id: 9000
   skip_tls_verify: false  # 生产环境设为 false

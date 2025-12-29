@@ -21,6 +21,7 @@ type NetworkConfig struct {
 type ProxmoxConfig struct {
 	Host          string `yaml:"host"`
 	User          string `yaml:"user"`
+	AuthMethod    string `yaml:"auth_method"`            // 认证方式: "password" 或 "api_token"
 	Password      string `yaml:"password,omitempty"`     // 密码认证（不推荐）
 	APITokenID    string `yaml:"api_token_id,omitempty"` // API Token ID（推荐）
 	APIToken      string `yaml:"api_token,omitempty"`    // API Token Secret（推荐）

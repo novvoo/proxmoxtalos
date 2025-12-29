@@ -19,13 +19,31 @@ type Deployer struct {
 func (d *Deployer) getProxmoxEnv() []string {
 	env := os.Environ()
 
-	// 优先使用 API Token
-	if d.config.Proxmox.APITokenID != "" && d.config.Proxmox.APIToken != "" {
-		env = append(env, fmt.Sprintf("PROXMOX_TOKEN_ID=%s", d.config.Proxmox.APITokenID))
-		env = append(env, fmt.Sprintf("PROXMOX_TOKEN_SECRET=%s", d.config.Proxmox.APIToken))
-	} else if d.config.Proxmox.Password != "" {
+	// 根据配置的认证方式选择
+	switch d.config.Proxmox.AuthMethod {
+	case "api_token":
+		// 使用 API Token 认证
+		if d.config.Proxmox.APITokenID != "" && d.config.Proxmox.APIToken != "" {
+			env = append(env, fmt.Sprintf("PROXMOX_TOKEN_ID=%s", d.config.Proxmox.APITokenID))
+			env = append(env, fmt.Sprintf("PROXMOX_TOKEN_SECRET=%s", d.config.Proxmox.APIToken))
+		} else {
+			fmt.Println("⚠️  警告: auth_method 设置为 api_token，但未配置 api_token_id 或 api_token")
+		}
+	case "password":
 		// 使用密码认证
-		env = append(env, fmt.Sprintf("PROXMOX_PASSWORD=%s", d.config.Proxmox.Password))
+		if d.config.Proxmox.Password != "" {
+			env = append(env, fmt.Sprintf("PROXMOX_PASSWORD=%s", d.config.Proxmox.Password))
+		} else {
+			fmt.Println("⚠️  警告: auth_method 设置为 password，但未配置 password")
+		}
+	default:
+		// 兼容旧配置：如果没有指定 auth_method，优先使用 API Token
+		if d.config.Proxmox.APITokenID != "" && d.config.Proxmox.APIToken != "" {
+			env = append(env, fmt.Sprintf("PROXMOX_TOKEN_ID=%s", d.config.Proxmox.APITokenID))
+			env = append(env, fmt.Sprintf("PROXMOX_TOKEN_SECRET=%s", d.config.Proxmox.APIToken))
+		} else if d.config.Proxmox.Password != "" {
+			env = append(env, fmt.Sprintf("PROXMOX_PASSWORD=%s", d.config.Proxmox.Password))
+		}
 	}
 
 	// Proxmox 主机和用户
